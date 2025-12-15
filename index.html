@@ -352,7 +352,22 @@
 
         // 重置按钮
         resetBtn.addEventListener('click', () => {
-            location.reload();
+            // Reset UI state instead of reloading page
+            fileInput.value = '';
+            processList.classList.remove('active');
+            result.classList.remove('show');
+            error.classList.remove('show');
+            resetBtn.classList.remove('show');
+            
+            // Reset all method statuses
+            methods.forEach(method => {
+                const element = document.getElementById(method.id);
+                const statusSpan = element.querySelector('.method-status');
+                element.classList.remove('trying', 'success', 'failed');
+                statusSpan.classList.remove('status-trying', 'status-success', 'status-failed');
+                statusSpan.classList.add('status-waiting');
+                statusSpan.textContent = '等待中';
+            });
         });
 
         // 格式化时长
@@ -420,6 +435,7 @@
             return new Promise((resolve, reject) => {
                 const video = document.createElement('video');
                 video.preload = 'metadata';
+                let objectURL = null;
                 
                 const timeoutId = setTimeout(() => {
                     cleanup();
@@ -430,6 +446,10 @@
                     clearTimeout(timeoutId);
                     video.removeEventListener(eventName, onEvent);
                     video.removeEventListener('error', onError);
+                    if (objectURL) {
+                        URL.revokeObjectURL(objectURL);
+                        objectURL = null;
+                    }
                     video.src = '';
                     video.load();
                 };
@@ -450,7 +470,8 @@
                 video.addEventListener('error', onError);
                 
                 try {
-                    video.src = URL.createObjectURL(file);
+                    objectURL = URL.createObjectURL(file);
+                    video.src = objectURL;
                 } catch (e) {
                     cleanup();
                     reject(e);
@@ -463,6 +484,7 @@
             return new Promise((resolve, reject) => {
                 const video = document.createElement('video');
                 video.preload = 'metadata';
+                let objectURL = null;
                 
                 const startTime = Date.now();
                 let pollInterval;
@@ -470,6 +492,10 @@
                 const cleanup = () => {
                     if (pollInterval) {
                         clearInterval(pollInterval);
+                    }
+                    if (objectURL) {
+                        URL.revokeObjectURL(objectURL);
+                        objectURL = null;
                     }
                     video.src = '';
                     video.load();
@@ -479,6 +505,13 @@
                     if (Date.now() - startTime > TIMEOUT_MS) {
                         cleanup();
                         reject(new Error('超时'));
+                        return;
+                    }
+
+                    // Check if video is loading properly
+                    if (video.readyState === 0 && Date.now() - startTime > 2000) {
+                        cleanup();
+                        reject(new Error('视频无法加载'));
                         return;
                     }
 
@@ -494,7 +527,8 @@
                 });
 
                 try {
-                    video.src = URL.createObjectURL(file);
+                    objectURL = URL.createObjectURL(file);
+                    video.src = objectURL;
                     video.load();
                     
                     // 每100ms检测一次
