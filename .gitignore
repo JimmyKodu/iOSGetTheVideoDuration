@@ -1,6 +1,7 @@
 # Test files
 test-video.mp4
 create_test_video.py
+IMPLEMENTATION_SUMMARY.md
 
 # OS files
 .DS_Store
