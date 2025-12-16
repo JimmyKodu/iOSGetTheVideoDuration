@@ -116,8 +116,8 @@
 
     const DEFAULT_TIMEOUT = 4000;
     const SLICE_SIZE = 2 * 1024 * 1024;
-    // DataView 的 littleEndian 传参：false 表示大端（MP4/MOV 使用大端）
-    const BIG_ENDIAN_FLAG = false;
+    // DataView 的 littleEndian 传参：false 表示按大端读取（MP4/MOV 使用大端）
+    const LITTLE_ENDIAN_FLAG = false;
 
     fileInput.addEventListener('change', () => {
       if (fileInput.files?.length) {
@@ -286,13 +286,13 @@
     function readUint64(view, offset) {
       if (offset + 8 > view.byteLength) throw new Error('uint64 读取越界');
       if (typeof view.getBigUint64 === 'function') {
-        const value = view.getBigUint64(offset, BIG_ENDIAN_FLAG);
+        const value = view.getBigUint64(offset, LITTLE_ENDIAN_FLAG);
         const maxSafe = BigInt(Number.MAX_SAFE_INTEGER);
         if (value > maxSafe) throw new Error('uint64 超出安全整数范围');
         return Number(value);
       }
-      const hi = view.getUint32(offset, BIG_ENDIAN_FLAG);
-      const lo = view.getUint32(offset + 4, BIG_ENDIAN_FLAG);
+      const hi = view.getUint32(offset, LITTLE_ENDIAN_FLAG);
+      const lo = view.getUint32(offset + 4, LITTLE_ENDIAN_FLAG);
       const combined = hi * 2 ** 32 + lo;
       if (combined > Number.MAX_SAFE_INTEGER) throw new Error('uint64 超出安全整数范围');
       return combined;
@@ -302,13 +302,13 @@
       if (mvhdSize < 24) throw new Error('mvhd 体积过小');
       const version = view.getUint8(mvhdOffset + 8);
       if (version === 1) {
-        const timescale = view.getUint32(mvhdOffset + 28, BIG_ENDIAN_FLAG);
+        const timescale = view.getUint32(mvhdOffset + 28, LITTLE_ENDIAN_FLAG);
         const duration = readUint64(view, mvhdOffset + 32);
         if (!timescale) throw new Error('timescale 为 0');
         return duration / timescale;
       }
-      const timescale = view.getUint32(mvhdOffset + 20, BIG_ENDIAN_FLAG);
-      const duration = view.getUint32(mvhdOffset + 24, BIG_ENDIAN_FLAG);
+      const timescale = view.getUint32(mvhdOffset + 20, LITTLE_ENDIAN_FLAG);
+      const duration = view.getUint32(mvhdOffset + 24, LITTLE_ENDIAN_FLAG);
       if (!timescale) throw new Error('timescale 为 0');
       return duration / timescale;
     }
@@ -320,7 +320,7 @@
 
       const readAtom = (pos) => {
         if (pos + 8 > total) throw new Error('atom 读取越界');
-        const size = view.getUint32(pos, BIG_ENDIAN_FLAG);
+        const size = view.getUint32(pos, LITTLE_ENDIAN_FLAG);
         const type = String.fromCharCode(
           view.getUint8(pos + 4),
           view.getUint8(pos + 5),
