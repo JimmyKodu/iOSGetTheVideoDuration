@@ -286,7 +286,7 @@
     function readUint64(view, offset) {
       if (offset + 8 > view.byteLength) throw new Error('uint64 读取越界');
       if (typeof view.getBigUint64 === 'function') {
-        const value = view.getBigUint64(offset);
+        const value = view.getBigUint64(offset, BIG_ENDIAN_FLAG);
         const maxSafe = BigInt(Number.MAX_SAFE_INTEGER);
         if (value > maxSafe) throw new Error('uint64 超出安全整数范围');
         return Number(value);
@@ -374,7 +374,9 @@
                 return;
               }
             } catch (ignoredError) {
-              console.debug?.('容器片段解析失败', ignoredError);
+              if (console && typeof console.debug === 'function') {
+                console.debug('容器片段解析失败', ignoredError);
+              }
             }
           }
           reject(new Error('容器解析未获得时长'));
@@ -410,7 +412,7 @@
         }
       }
 
-      if (successDuration == null) {
+      if (successDuration === null) {
         statusEl.textContent = '全部方案均未获取到时长，请更换文件或浏览器版本';
       }
     }
