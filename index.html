@@ -115,6 +115,7 @@
     const logEl = document.getElementById('log');
 
     const DEFAULT_TIMEOUT = 4000;
+    const SLICE_SIZE = 2 * 1024 * 1024;
 
     fileInput.addEventListener('change', () => {
       if (fileInput.files?.length) {
@@ -279,11 +280,12 @@
     }
 
     function readUint64(view, offset) {
+      if (offset + 8 > view.byteLength) throw new Error('uint64 读取越界');
       if (typeof view.getBigUint64 === 'function') {
         return Number(view.getBigUint64(offset));
       }
-      const hi = view.getUint32(offset);
-      const lo = view.getUint32(offset + 4);
+      const hi = view.getUint32(offset, false);
+      const lo = view.getUint32(offset + 4, false);
       return hi * 2 ** 32 + lo;
     }
 
@@ -341,7 +343,6 @@
 
     function containerParsingStrategy(file) {
       return new Promise((resolve, reject) => {
-        const sliceSize = 2 * 1024 * 1024;
         const readSlice = (blob) =>
           new Promise((res, rej) => {
             const reader = new FileReader();
@@ -352,8 +353,8 @@
 
         (async () => {
           const slices = [
-            file.slice(0, sliceSize),
-            file.size > sliceSize ? file.slice(file.size - sliceSize) : null
+            file.slice(0, SLICE_SIZE),
+            file.size > SLICE_SIZE ? file.slice(file.size - SLICE_SIZE) : null
           ].filter(Boolean);
 
           for (const part of slices) {
@@ -364,7 +365,7 @@
                 resolve(duration);
                 return;
               }
-            } catch (_) {
+            } catch (ignoredError) {
               // continue to next slice
             }
           }
