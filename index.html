@@ -350,10 +350,10 @@
       const readSlice = (blob) =>
         new Promise((res, rej) => {
           const reader = new FileReader();
-            reader.onload = () => res(reader.result);
-            reader.onerror = () => rej(new Error('读取片段失败'));
-            reader.readAsArrayBuffer(blob);
-          });
+          reader.onload = () => res(reader.result);
+          reader.onerror = () => rej(new Error('读取片段失败'));
+          reader.readAsArrayBuffer(blob);
+        });
 
       const run = async () => {
         const slices = [
@@ -361,19 +361,19 @@
           file.size > SLICE_SIZE ? file.slice(file.size - SLICE_SIZE) : null
         ].filter(Boolean);
 
-          for (const part of slices) {
-            try {
-              const buffer = await readSlice(part);
-              const duration = parseContainerDuration(buffer);
-              if (Number.isFinite(duration) && duration > 0) {
-                resolve(duration);
-                return;
-              }
-        } catch (ignoredError) {
-          console.debug?.('容器片段解析失败', ignoredError);
+        for (const part of slices) {
+          try {
+            const buffer = await readSlice(part);
+            const duration = parseContainerDuration(buffer);
+            if (Number.isFinite(duration) && duration > 0) {
+              resolve(duration);
+              return;
+            }
+          } catch (ignoredError) {
+            console.debug?.('容器片段解析失败', ignoredError);
+          }
         }
-      }
-      reject(new Error('容器解析未获得时长'));
+        reject(new Error('容器解析未获得时长'));
       };
 
       run();
