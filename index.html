@@ -289,8 +289,8 @@
         if (value > maxSafe) throw new Error('uint64 超出安全整数范围');
         return Number(value);
       }
-      const hi = view.getUint32(offset, false);
-      const lo = view.getUint32(offset + 4, false);
+      const hi = view.getUint32(offset, false /* big-endian */);
+      const lo = view.getUint32(offset + 4, false /* big-endian */);
       return hi * 2 ** 32 + lo;
     }
 
@@ -298,13 +298,13 @@
       if (mvhdSize < 24) throw new Error('mvhd 体积过小');
       const version = view.getUint8(mvhdOffset + 8);
       if (version === 1) {
-        const timescale = view.getUint32(mvhdOffset + 28);
+        const timescale = view.getUint32(mvhdOffset + 28, false /* big-endian */);
         const duration = readUint64(view, mvhdOffset + 32);
         if (!timescale) throw new Error('timescale 为 0');
         return duration / timescale;
       }
-      const timescale = view.getUint32(mvhdOffset + 20);
-      const duration = view.getUint32(mvhdOffset + 24);
+      const timescale = view.getUint32(mvhdOffset + 20, false /* big-endian */);
+      const duration = view.getUint32(mvhdOffset + 24, false /* big-endian */);
       if (!timescale) throw new Error('timescale 为 0');
       return duration / timescale;
     }
@@ -316,7 +316,7 @@
 
       const readAtom = (pos) => {
         if (pos + 8 > total) throw new Error('atom 读取越界');
-        const size = view.getUint32(pos);
+        const size = view.getUint32(pos, false /* big-endian */);
         const type = String.fromCharCode(
           view.getUint8(pos + 4),
           view.getUint8(pos + 5),
