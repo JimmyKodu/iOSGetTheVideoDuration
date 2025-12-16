@@ -291,9 +291,9 @@
         if (value > maxSafe) throw new Error('uint64 超出安全整数范围');
         return Number(value);
       }
-      const hi = view.getUint32(offset, LITTLE_ENDIAN_FLAG);
-      const lo = view.getUint32(offset + 4, LITTLE_ENDIAN_FLAG);
-      const combined = hi * 2 ** 32 + lo;
+      const high32 = view.getUint32(offset, LITTLE_ENDIAN_FLAG);
+      const low32 = view.getUint32(offset + 4, LITTLE_ENDIAN_FLAG);
+      const combined = high32 * 2 ** 32 + low32;
       if (combined > Number.MAX_SAFE_INTEGER) throw new Error('uint64 超出安全整数范围');
       return combined;
     }
