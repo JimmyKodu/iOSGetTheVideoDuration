@@ -285,7 +285,8 @@
       if (offset + 8 > view.byteLength) throw new Error('uint64 读取越界');
       if (typeof view.getBigUint64 === 'function') {
         const value = view.getBigUint64(offset);
-        if (value > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error('uint64 超出安全整数范围');
+        const maxSafe = BigInt(Number.MAX_SAFE_INTEGER);
+        if (value > maxSafe) throw new Error('uint64 超出安全整数范围');
         return Number(value);
       }
       const hi = view.getUint32(offset, false);
@@ -322,18 +323,19 @@
           view.getUint8(pos + 6),
           view.getUint8(pos + 7)
         );
+        if (!size || size < 8 || size > total - pos) throw new Error('atom size 无效');
         return { size, type };
       };
 
       while (offset + 8 <= total) {
         const { size, type } = readAtom(offset);
-        if (!size || size < 8 || offset > total - size) break;
+        if (!size || size < 8 || size > total - offset) break;
         const end = offset + size;
         if (type === 'moov' && end <= total) {
           let inner = offset + 8;
           while (inner + 8 <= end) {
             const { size: innerSize, type: innerType } = readAtom(inner);
-            if (!innerSize || innerSize < 8 || inner > end - innerSize) break;
+            if (!innerSize || innerSize < 8 || innerSize > end - inner) break;
             if (innerType === 'mvhd') {
               return parseMvhdDuration(view, inner, innerSize);
             }
@@ -345,40 +347,40 @@
       throw new Error('未找到 moov/mvhd 原子');
     }
 
-  function containerParsingStrategy(file) {
-    return new Promise((resolve, reject) => {
-      const readSlice = (blob) =>
-        new Promise((res, rej) => {
-          const reader = new FileReader();
-          reader.onload = () => res(reader.result);
-          reader.onerror = () => rej(new Error('读取片段失败'));
-          reader.readAsArrayBuffer(blob);
-        });
+    function containerParsingStrategy(file) {
+      return new Promise((resolve, reject) => {
+        const readSlice = (blob) =>
+          new Promise((res, rej) => {
+            const reader = new FileReader();
+            reader.onload = () => res(reader.result);
+            reader.onerror = () => rej(new Error('读取片段失败'));
+            reader.readAsArrayBuffer(blob);
+          });
 
-      const run = async () => {
-        const slices = [
-          file.slice(0, SLICE_SIZE),
-          file.size > SLICE_SIZE ? file.slice(file.size - SLICE_SIZE) : null
-        ].filter(Boolean);
+        const run = async () => {
+          const slices = [
+            file.slice(0, SLICE_SIZE),
+            file.size > SLICE_SIZE ? file.slice(file.size - SLICE_SIZE) : null
+          ].filter(Boolean);
 
-        for (const part of slices) {
-          try {
-            const buffer = await readSlice(part);
-            const duration = parseContainerDuration(buffer);
-            if (Number.isFinite(duration) && duration > 0) {
-              resolve(duration);
-              return;
+          for (const part of slices) {
+            try {
+              const buffer = await readSlice(part);
+              const duration = parseContainerDuration(buffer);
+              if (Number.isFinite(duration) && duration > 0) {
+                resolve(duration);
+                return;
+              }
+            } catch (ignoredError) {
+              console.debug?.('容器片段解析失败', ignoredError);
             }
-          } catch (ignoredError) {
-            console.debug?.('容器片段解析失败', ignoredError);
           }
-        }
-        reject(new Error('容器解析未获得时长'));
-      };
+          reject(new Error('容器解析未获得时长'));
+        };
 
-      run();
-    });
-  }
+        run();
+      });
+    }
 
     const strategies = [
       { name: '方案1：video 元数据（Object URL）', runner: videoViaObjectURL },
