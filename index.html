@@ -264,7 +264,9 @@
             }
             const ctx = new AudioCtx();
             const buffer = await ctx.decodeAudioData(reader.result);
-            ctx.close?.();
+            if (ctx && typeof ctx.close === 'function') {
+              ctx.close();
+            }
             if (buffer && Number.isFinite(buffer.duration) && buffer.duration > 0) {
               resolve(buffer.duration);
             } else {
@@ -282,7 +284,9 @@
     function readUint64(view, offset) {
       if (offset + 8 > view.byteLength) throw new Error('uint64 读取越界');
       if (typeof view.getBigUint64 === 'function') {
-        return Number(view.getBigUint64(offset));
+        const value = view.getBigUint64(offset);
+        if (value > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error('uint64 超出安全整数范围');
+        return Number(value);
       }
       const hi = view.getUint32(offset, false);
       const lo = view.getUint32(offset + 4, false);
@@ -321,41 +325,41 @@
         return { size, type };
       };
 
-      while (offset + 8 <= total) {
-        const { size, type } = readAtom(offset);
-        if (!size || size < 8 || size > total - offset) break;
-        const end = offset + size;
-        if (type === 'moov' && end <= total) {
-          let inner = offset + 8;
-          while (inner + 8 <= end) {
-            const { size: innerSize, type: innerType } = readAtom(inner);
-            if (!innerSize || innerSize < 8 || innerSize > end - inner) break;
-            if (innerType === 'mvhd') {
-              return parseMvhdDuration(view, inner, innerSize);
-            }
-            inner += innerSize;
-          }
+  while (offset + 8 <= total) {
+    const { size, type } = readAtom(offset);
+    if (!size || size < 8 || offset > total - size) break;
+    const end = offset + size;
+    if (type === 'moov' && end <= total) {
+      let inner = offset + 8;
+      while (inner + 8 <= end) {
+        const { size: innerSize, type: innerType } = readAtom(inner);
+        if (!innerSize || innerSize < 8 || inner > end - innerSize) break;
+        if (innerType === 'mvhd') {
+          return parseMvhdDuration(view, inner, innerSize);
+        }
+        inner += innerSize;
+      }
         }
         offset = end;
       }
       throw new Error('未找到 moov/mvhd 原子');
     }
 
-    function containerParsingStrategy(file) {
-      return new Promise((resolve, reject) => {
-        const readSlice = (blob) =>
-          new Promise((res, rej) => {
-            const reader = new FileReader();
+  function containerParsingStrategy(file) {
+    return new Promise((resolve, reject) => {
+      const readSlice = (blob) =>
+        new Promise((res, rej) => {
+          const reader = new FileReader();
             reader.onload = () => res(reader.result);
             reader.onerror = () => rej(new Error('读取片段失败'));
             reader.readAsArrayBuffer(blob);
           });
 
-        (async () => {
-          const slices = [
-            file.slice(0, SLICE_SIZE),
-            file.size > SLICE_SIZE ? file.slice(file.size - SLICE_SIZE) : null
-          ].filter(Boolean);
+      const run = async () => {
+        const slices = [
+          file.slice(0, SLICE_SIZE),
+          file.size > SLICE_SIZE ? file.slice(file.size - SLICE_SIZE) : null
+        ].filter(Boolean);
 
           for (const part of slices) {
             try {
@@ -365,14 +369,16 @@
                 resolve(duration);
                 return;
               }
-            } catch (ignoredError) {
-              // continue to next slice
-            }
-          }
-          reject(new Error('容器解析未获得时长'));
-        })();
-      });
-    }
+        } catch (ignoredError) {
+          console.debug?.('容器片段解析失败', ignoredError);
+        }
+      }
+      reject(new Error('容器解析未获得时长'));
+      };
+
+      run();
+    });
+  }
 
     const strategies = [
       { name: '方案1：video 元数据（Object URL）', runner: videoViaObjectURL },
