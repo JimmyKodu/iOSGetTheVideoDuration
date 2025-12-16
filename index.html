@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>iOS 获取视频时长（多方案）</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+    }
+    body {
+      margin: 0;
+      padding: 24px;
+      background: #f7f7f9;
+      color: #1c1c1e;
+    }
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 20px 20px 28px;
+    }
+    h1 {
+      margin-top: 0;
+      font-size: 22px;
+    }
+    p.description {
+      margin: 6px 0 16px;
+      color: #3a3a3c;
+    }
+    .controls {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    button {
+      background: #007aff;
+      color: #fff;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 10px;
+      font-size: 15px;
+      cursor: pointer;
+      transition: transform 0.08s ease, opacity 0.12s ease;
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    button:active:not(:disabled) {
+      transform: scale(0.98);
+    }
+    .status {
+      padding: 12px;
+      border-radius: 10px;
+      background: #f2f2f7;
+      margin: 10px 0 14px;
+      color: #1c1c1e;
+      font-weight: 600;
+    }
+    ul#log {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: grid;
+      gap: 8px;
+    }
+    ul#log li {
+      background: #f8f9fb;
+      border: 1px solid #eaedf2;
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 14px;
+      line-height: 1.4;
+      word-break: break-all;
+    }
+    .success {
+      color: #0b8f3c;
+    }
+    .fail {
+      color: #c0392b;
+    }
+    .inline-code {
+      font-family: ui-monospace, SFMono-Regular, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      background: #eef1f7;
+      padding: 2px 6px;
+      border-radius: 6px;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>iOS 获取视频时长（多方案备选）</h1>
+    <p class="description">
+      选择一个视频（iOS 可能转换为 <span class="inline-code">.mov</span>）。页面会依次尝试 5 种方案，任何一步超时会自动切换下一方案，并实时展示过程。
+    </p>
+    <div class="controls">
+      <input type="file" id="fileInput" accept="video/*">
+      <button id="startBtn" disabled>开始获取</button>
+    </div>
+    <div id="status" class="status">未选择文件</div>
+    <ul id="log"></ul>
+  </div>
+
+  <script>
+    const fileInput = document.getElementById('fileInput');
+    const startBtn = document.getElementById('startBtn');
+    const statusEl = document.getElementById('status');
+    const logEl = document.getElementById('log');
+
+    const DEFAULT_TIMEOUT = 4000;
+
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files?.length) {
+        startBtn.disabled = false;
+        statusEl.textContent = `已选择：${fileInput.files[0].name} (${Math.round(fileInput.files[0].size / 1024)} KB)`;
+      } else {
+        startBtn.disabled = true;
+        statusEl.textContent = '未选择文件';
+      }
+      clearLog();
+    });
+
+    startBtn.addEventListener('click', () => {
+      const [file] = fileInput.files || [];
+      if (!file) return;
+      startBtn.disabled = true;
+      clearLog();
+      statusEl.textContent = '开始获取时长…';
+      runStrategies(file).finally(() => {
+        startBtn.disabled = false;
+      });
+    });
+
+    function clearLog() {
+      logEl.innerHTML = '';
+    }
+
+    function log(message, type) {
+      const li = document.createElement('li');
+      if (type) {
+        li.classList.add(type);
+      }
+      li.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+      logEl.appendChild(li);
+      li.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }
+
+    function withTimeout(promise, ms = DEFAULT_TIMEOUT) {
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error(`超时（${ms}ms）`)), ms);
+        promise.then(
+          (res) => {
+            clearTimeout(timer);
+            resolve(res);
+          },
+          (err) => {
+            clearTimeout(timer);
+            reject(err);
+          }
+        );
+      });
+    }
+
+    function loadVideoDurationFromSrc(src, shouldRevoke) {
+      return new Promise((resolve, reject) => {
+        const video = document.createElement('video');
+        video.preload = 'metadata';
+        video.playsInline = true;
+        video.muted = true;
+
+        const cleanup = () => {
+          video.src = '';
+          video.remove();
+          if (shouldRevoke) {
+            URL.revokeObjectURL(src);
+          }
+        };
+
+        video.onloadedmetadata = () => {
+          const duration = video.duration;
+          cleanup();
+          if (Number.isFinite(duration) && duration > 0) {
+            resolve(duration);
+          } else {
+            reject(new Error('获取到的时长无效'));
+          }
+        };
+
+        video.onerror = () => {
+          const error = video.error?.message || '视频元数据加载失败';
+          cleanup();
+          reject(new Error(error));
+        };
+
+        video.src = src;
+        video.load();
+      });
+    }
+
+    function videoViaObjectURL(file) {
+      const objectUrl = URL.createObjectURL(file);
+      return loadVideoDurationFromSrc(objectUrl, true);
+    }
+
+    function videoViaDataURL(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          loadVideoDurationFromSrc(reader.result, false).then(resolve, reject);
+        };
+        reader.onerror = () => reject(new Error('读取文件为 DataURL 失败'));
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function audioMetadataFallback(file) {
+      return new Promise((resolve, reject) => {
+        const url = URL.createObjectURL(file);
+        const audio = new Audio();
+        audio.preload = 'metadata';
+
+        const cleanup = () => {
+          audio.src = '';
+          URL.revokeObjectURL(url);
+        };
+
+        audio.onloadedmetadata = () => {
+          const duration = audio.duration;
+          cleanup();
+          if (Number.isFinite(duration) && duration > 0) {
+            resolve(duration);
+          } else {
+            reject(new Error('音频元数据无有效时长'));
+          }
+        };
+
+        audio.onerror = () => {
+          cleanup();
+          reject(new Error('音频元数据加载失败'));
+        };
+
+        audio.src = url;
+        audio.load();
+      });
+    }
+
+    function audioContextDecode(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = async () => {
+          try {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (!AudioCtx) {
+              reject(new Error('当前环境不支持 AudioContext'));
+              return;
+            }
+            const ctx = new AudioCtx();
+            const buffer = await ctx.decodeAudioData(reader.result);
+            ctx.close?.();
+            if (buffer && Number.isFinite(buffer.duration) && buffer.duration > 0) {
+              resolve(buffer.duration);
+            } else {
+              reject(new Error('解码音频未得到有效时长'));
+            }
+          } catch (err) {
+            reject(new Error(err?.message || '解码音频失败'));
+          }
+        };
+        reader.onerror = () => reject(new Error('读取文件为 ArrayBuffer 失败'));
+        reader.readAsArrayBuffer(file);
+      });
+    }
+
+    function parseMvhdDuration(view, mvhdOffset, mvhdSize) {
+      if (mvhdSize < 24) throw new Error('mvhd 体积过小');
+      const version = view.getUint8(mvhdOffset + 8);
+      if (version === 1) {
+        const timescale = view.getUint32(mvhdOffset + 28);
+        const duration = Number(view.getBigUint64(mvhdOffset + 32));
+        if (!timescale) throw new Error('timescale 为 0');
+        return duration / timescale;
+      }
+      const timescale = view.getUint32(mvhdOffset + 20);
+      const duration = view.getUint32(mvhdOffset + 24);
+      if (!timescale) throw new Error('timescale 为 0');
+      return duration / timescale;
+    }
+
+    function parseContainerDuration(buffer) {
+      const view = new DataView(buffer);
+      const total = view.byteLength;
+      let offset = 0;
+
+      const readAtom = (pos) => {
+        const size = view.getUint32(pos);
+        const type = String.fromCharCode(
+          view.getUint8(pos + 4),
+          view.getUint8(pos + 5),
+          view.getUint8(pos + 6),
+          view.getUint8(pos + 7)
+        );
+        return { size, type };
+      };
+
+      while (offset + 8 <= total) {
+        const { size, type } = readAtom(offset);
+        if (!size || size < 8) break;
+        const end = offset + size;
+        if (type === 'moov' && end <= total) {
+          let inner = offset + 8;
+          while (inner + 8 <= end) {
+            const { size: innerSize, type: innerType } = readAtom(inner);
+            if (!innerSize || innerSize < 8) break;
+            if (innerType === 'mvhd') {
+              return parseMvhdDuration(view, inner, innerSize);
+            }
+            inner += innerSize;
+          }
+        }
+        offset = end;
+      }
+      throw new Error('未找到 moov/mvhd 原子');
+    }
+
+    function containerParsingStrategy(file) {
+      return new Promise((resolve, reject) => {
+        const sliceSize = 2 * 1024 * 1024;
+        const readSlice = (blob) =>
+          new Promise((res, rej) => {
+            const reader = new FileReader();
+            reader.onload = () => res(reader.result);
+            reader.onerror = () => rej(new Error('读取片段失败'));
+            reader.readAsArrayBuffer(blob);
+          });
+
+        (async () => {
+          const slices = [
+            file.slice(0, sliceSize),
+            file.size > sliceSize ? file.slice(file.size - sliceSize) : null
+          ].filter(Boolean);
+
+          for (const part of slices) {
+            try {
+              const buffer = await readSlice(part);
+              const duration = parseContainerDuration(buffer);
+              if (Number.isFinite(duration) && duration > 0) {
+                resolve(duration);
+                return;
+              }
+            } catch (_) {
+              // continue to next slice
+            }
+          }
+          reject(new Error('容器解析未获得时长'));
+        })();
+      });
+    }
+
+    const strategies = [
+      { name: '方案1：video 元数据（Object URL）', runner: videoViaObjectURL },
+      { name: '方案2：video 元数据（Data URL）', runner: videoViaDataURL },
+      { name: '方案3：audio 元数据兜底', runner: audioMetadataFallback },
+      { name: '方案4：AudioContext 解码', runner: audioContextDecode },
+      { name: '方案5：容器解析（moov/mvhd）', runner: containerParsingStrategy }
+    ];
+
+    async function runStrategies(file) {
+      let successDuration = null;
+      for (const strategy of strategies) {
+        log(`尝试 ${strategy.name}`);
+        try {
+          const duration = await withTimeout(strategy.runner(file), DEFAULT_TIMEOUT);
+          if (!Number.isFinite(duration) || duration <= 0) {
+            throw new Error('得到的时长无效');
+          }
+          successDuration = duration;
+          log(`成功：${strategy.name} -> ${duration.toFixed(2)} 秒`, 'success');
+          statusEl.textContent = `成功：${duration.toFixed(2)} 秒（${strategy.name}）`;
+          break;
+        } catch (error) {
+          log(`失败：${strategy.name}，原因：${error?.message || error}`, 'fail');
+        }
+      }
+
+      if (successDuration == null) {
+        statusEl.textContent = '全部方案均未获取到时长，请更换文件或浏览器版本';
+      }
+    }
+  </script>
+</body>
+</html>
