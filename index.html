@@ -325,20 +325,20 @@
         return { size, type };
       };
 
-  while (offset + 8 <= total) {
-    const { size, type } = readAtom(offset);
-    if (!size || size < 8 || offset > total - size) break;
-    const end = offset + size;
-    if (type === 'moov' && end <= total) {
-      let inner = offset + 8;
-      while (inner + 8 <= end) {
-        const { size: innerSize, type: innerType } = readAtom(inner);
-        if (!innerSize || innerSize < 8 || inner > end - innerSize) break;
-        if (innerType === 'mvhd') {
-          return parseMvhdDuration(view, inner, innerSize);
-        }
-        inner += innerSize;
-      }
+      while (offset + 8 <= total) {
+        const { size, type } = readAtom(offset);
+        if (!size || size < 8 || offset > total - size) break;
+        const end = offset + size;
+        if (type === 'moov' && end <= total) {
+          let inner = offset + 8;
+          while (inner + 8 <= end) {
+            const { size: innerSize, type: innerType } = readAtom(inner);
+            if (!innerSize || innerSize < 8 || inner > end - innerSize) break;
+            if (innerType === 'mvhd') {
+              return parseMvhdDuration(view, inner, innerSize);
+            }
+            inner += innerSize;
+          }
         }
         offset = end;
       }
