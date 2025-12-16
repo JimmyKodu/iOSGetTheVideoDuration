@@ -86,7 +86,7 @@
       color: #c0392b;
     }
     .inline-code {
-      font-family: ui-monospace, SFMono-Regular, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
       background: #eef1f7;
       padding: 2px 6px;
       border-radius: 6px;
@@ -293,7 +293,9 @@
       }
       const hi = view.getUint32(offset, BIG_ENDIAN_FLAG);
       const lo = view.getUint32(offset + 4, BIG_ENDIAN_FLAG);
-      return hi * 2 ** 32 + lo;
+      const combined = hi * 2 ** 32 + lo;
+      if (combined > Number.MAX_SAFE_INTEGER) throw new Error('uint64 超出安全整数范围');
+      return combined;
     }
 
     function parseMvhdDuration(view, mvhdOffset, mvhdSize) {
@@ -374,9 +376,7 @@
                 return;
               }
             } catch (ignoredError) {
-              if (console && typeof console.debug === 'function') {
-                console.debug('容器片段解析失败', ignoredError);
-              }
+              console.debug('容器片段解析失败', ignoredError);
             }
           }
           reject(new Error('容器解析未获得时长'));
